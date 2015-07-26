@@ -87,7 +87,7 @@ static BOOL _OpeeIsProcessBlacklistedInFolder(CFURLRef libraries, CFDictionaryRe
         identifier = CFDictionaryGetValue(info, kCFBundleIdentifierKey);
     
     bool blacklisted = false;
-    
+	
     // Test bundle if blacklisted
     if (identifier != NULL) {
         CFBooleanRef blacklistValue = CFDictionaryGetValue(info, kOPBlacklistedKey);
@@ -172,8 +172,30 @@ static void _OpeeProcessExtensions(CFURLRef libraries, CFBundleRef mainBundle, C
     
     if (folder == NULL)
         return;
-    
-    CFArrayRef bundles = CFBundleCopyResourceURLsOfType(folder, CFSTR("bundle"), NULL);
+
+	CFArrayRef _bundles = CFBundleCopyResourceURLsOfType(folder, CFSTR("bundle"), NULL);
+	CFMutableArrayRef bundles = CFArrayCreateMutableCopy(kCFAllocatorDefault, CFArrayGetCount(_bundles), _bundles);
+	CFRelease(_bundles);
+	
+	// Load safeload first if it exists
+	CFIndex safeLoadIndex = CFArrayGetFirstIndexOfValue(bundles, CFRangeMake(0, CFArrayGetCount(bundles)), CFArrayGetValueAtIndex(bundles, 5));
+
+	if (safeLoadIndex != -1) {
+		CFBundleRef bundle = CFBundleCreate(kCFAllocatorDefault, CFArrayGetValueAtIndex(bundles, safeLoadIndex));
+		CFArrayRemoveValueAtIndex(bundles, safeLoadIndex);
+		
+		CFURLRef executableURL = CFBundleCopyExecutableURL(bundle);
+		const char executablePath[PATH_MAX];
+		CFURLGetFileSystemRepresentation(executableURL, true, (UInt8*)&executablePath, PATH_MAX);
+		CFRelease(executableURL);
+		
+		// load the dylib
+		void *handle = dlopen(executablePath, RTLD_LAZY | RTLD_GLOBAL);
+		if (handle == NULL) {
+			OPLog(OPLogLevelError, "%s", dlerror());
+		}
+	}
+	
     CFRelease(folder);
     
     if (bundles == NULL) {
